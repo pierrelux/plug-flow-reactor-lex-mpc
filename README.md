@@ -58,7 +58,7 @@ The three manipulated inputs are volumetric flow rates in m³/min:
 
 The controlled outputs are product concentrations at three axial positions:
 
-$$\mathbf{y} = \begin{bmatrix} C_{P,3} \\ C_{P,6} \\ C_{P,9} \end{bmatrix}$$
+$$y = \begin{bmatrix} C_{P,3} \\ C_{P,6} \\ C_{P,9} \end{bmatrix}$$
 
 In practice, $C_{P,9}$ (the exit concentration) is most important because it determines what downstream processes receive. Off-spec product may need to be discarded or reprocessed.
 
@@ -66,17 +66,17 @@ In practice, $C_{P,9}$ (the exit concentration) is most important because it det
 
 Each CSTR follows mass balance equations. For tank $i$:
 
-$$\frac{dC_{A,i}}{dt} = \frac{F_{\text{in},i}}{V}(C_{A,i-1} - C_{A,i}) - 2k C_{A,i}^2$$
+$$\frac{dC_{A,i}}{dt} = \frac{F_i}{V}(C_{A,i-1} - C_{A,i}) - 2k C_{A,i}^2$$
 
-$$\frac{dC_{P,i}}{dt} = \frac{F_{\text{in},i}}{V}(C_{P,i-1} - C_{P,i}) + k C_{A,i}^2$$
+$$\frac{dC_{P,i}}{dt} = \frac{F_i}{V}(C_{P,i-1} - C_{P,i}) + k C_{A,i}^2$$
 
-Here $F_{\text{in},i}$ is the total volumetric flow into tank $i$, $V = 1$ m³ is the tank volume, and $k = 0.2$ m³/(kg·min) is the rate constant. The factor of 2 in reactant consumption reflects stoichiometry: two moles of $A$ are consumed per mole of $P$ produced.
+Here $F_i$ is the total volumetric flow into tank $i$, $V = 1$ m³ is the tank volume, and $k = 0.2$ m³/(kg·min) is the rate constant. The factor of 2 in reactant consumption reflects stoichiometry: two moles of $A$ are consumed per mole of $P$ produced.
 
 Higher flow rates reduce the residence time $\tau = V/F$, giving less time for reaction and lower conversion. Lower flow rates increase residence time and conversion. When a disturbance increases the inlet concentration $C_A$, increasing the flow rate can flush out excess reactant before it over-converts.
 
 ## Control Objective
 
-Given a target profile $\mathbf{r} = [r_1, r_2, r_3]^\top$, find inputs $\mathbf{u} = [F, F_a, F_b]^\top$ that track this profile.
+Given a target profile $r = [r_1, r_2, r_3]^\top$, find inputs $u = [F, F_a, F_b]^\top$ that track this profile.
 
 ### Infeasibility Under Disturbances
 
@@ -90,7 +90,7 @@ The achievable output combinations form a constrained set. Under large disturban
 
 Endpoint control optimizes only the final output $y_3$:
 
-$$\min_{\Delta \mathbf{u}} \sum_{k=1}^{p} w_3 (y_3(k) - r_3)^2 + \|\Delta \mathbf{u}\|^2_W$$
+$$\min_{\Delta u} \sum_{k=1}^{p} w_3 (y_3(k) - r_3)^2 + ||\Delta u||^2_W$$
 
 This achieves the best $y_3$ tracking but ignores $y_1$ and $y_2$.
 
@@ -98,7 +98,7 @@ This achieves the best $y_3$ tracking but ignores $y_1$ and $y_2$.
 
 Full profile control optimizes all outputs with comparable weights:
 
-$$\min_{\Delta \mathbf{u}} \sum_{k=1}^{p} \sum_{i=1}^{3} w_i (y_i(k) - r_i)^2 + \|\Delta \mathbf{u}\|^2_W$$
+$$\min_{\Delta u} \sum_{k=1}^{p} \sum_{i=1}^{3} w_i (y_i(k) - r_i)^2 + ||\Delta u||^2_W$$
 
 When the target is infeasible, this compromises on all outputs. None may reach their targets.
 
@@ -106,7 +106,7 @@ When the target is infeasible, this compromises on all outputs. None may reach t
 
 Lexicographic MPC enforces a strict priority ordering $y_3 \succ y_2 \succ y_1$ through hierarchical weights:
 
-$$\min_{\Delta \mathbf{u}} \sum_{k=1}^{p} \left[ w_1 (y_1(k) - r_1)^2 + 10^3 w_2 (y_2(k) - r_2)^2 + 10^6 w_3 (y_3(k) - r_3)^2 \right] + \|\Delta \mathbf{u}\|^2_W$$
+$$\min_{\Delta u} \sum_{k=1}^{p} \left[ w_1 (y_1(k) - r_1)^2 + 10^3 w_2 (y_2(k) - r_2)^2 + 10^6 w_3 (y_3(k) - r_3)^2 \right] + ||\Delta u||^2_W$$
 
 This achieves the best possible $y_3$, then optimizes $y_2$ without degrading $y_3$, then $y_1$.
 
@@ -114,16 +114,16 @@ This achieves the best possible $y_3$, then optimizes $y_2$ without degrading $y
 
 The implementation uses Extended MPC (Garcia, 1984). At each time step:
 
-1. Simulate the nonlinear model with constant input $\mathbf{u}_0$ to obtain the free response $\mathbf{Y}_{\text{free}}$
-2. Linearize around the current state to obtain the step response matrix $\mathbf{S}$
-3. Predict outputs as $\mathbf{Y} = \mathbf{Y}_{\text{free}} + \mathbf{S} \Delta\mathbf{U}$
-4. Solve a QP to find optimal input moves $\Delta\mathbf{U}^*$
+1. Simulate the nonlinear model with constant input $u_0$ to obtain the free response $Y_\text{free}$
+2. Linearize around the current state to obtain the step response matrix $S$
+3. Predict outputs as $Y = Y_\text{free} + S \Delta U$
+4. Solve a QP to find optimal input moves $\Delta U^\*$
 
 The QP subproblem is:
 
-$$\min_{\Delta\mathbf{U}} \frac{1}{2} \Delta\mathbf{U}^\top \mathbf{H} \Delta\mathbf{U} + \mathbf{g}^\top \Delta\mathbf{U}$$
+$$\min_{\Delta U} \frac{1}{2} \Delta U^\top H \Delta U + g^\top \Delta U$$
 
-subject to move bounds $\Delta\mathbf{u}_{\min} \leq \Delta\mathbf{u}_k \leq \Delta\mathbf{u}_{\max}$ and input bounds $\mathbf{u}_{\min} \leq \mathbf{u}_0 + \sum_{j=0}^{k} \Delta\mathbf{u}_j \leq \mathbf{u}_{\max}$.
+subject to move bounds $\Delta u_\text{min} \leq \Delta u_k \leq \Delta u_\text{max}$ and input bounds $u_\text{min} \leq u_0 + \sum_{j=0}^{k} \Delta u_j \leq u_\text{max}$.
 
 ## Case Studies
 
